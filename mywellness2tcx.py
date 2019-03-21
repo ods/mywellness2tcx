@@ -9,10 +9,13 @@ from lxml import etree
 from eplant import ElementPlant
 
 
+TCX_NS = 'http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2'
+AX_NS = 'http://www.garmin.com/xmlschemas/ActivityExtension/v2'
+
 plant = ElementPlant(
-    default_namespace='http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2',
+    default_namespace=TCX_NS,
     nsmap={
-        'ax': 'http://www.garmin.com/xmlschemas/ActivityExtension/v2',
+        'ax': AX_NS,
     }
 )
 
@@ -35,26 +38,32 @@ def mywellness2tcx(in_file, out_file, start_dt):
     #print(data['data'].keys())
 
     samples = []
-    current_dist = None
-    current_dist_samples = []
     for sample in analitics['samples']:
         dt = start_dt + timedelta(seconds=sample['t'])
         values = dict(zip(fields, sample['vs']))
         samples.append((dt, values))
 
-        dist = values['HDistance']
-        if dist == current_dist:
-            current_dist_samples.append(values)
-        else:
-            if current_dist is not None:
-                diff = dist - current_dist
-                incr = diff / len(current_dist_samples)
-                for i, values_to_change in enumerate(current_dist_samples):
-                    values_to_change['NormDistance'] = current_dist + i * incr
-            current_dist = dist
-            current_dist_samples = [values]
-    for values_to_change in current_dist_samples:
-        values_to_change['NormDistance'] = current_dist
+    while samples:
+        dt, sample = samples[-1]
+        if sample['Speed'] != 0 or sample['Power'] != 0:
+            break
+        samples.pop()
+
+    prev_dt, sample = samples[0]
+    dist = sample['HDistance']
+    for dt, sample in samples[1:]:
+        dist += (dt - prev_dt).seconds * sample['Speed'] / 3.6
+        prev_dt = dt
+    coeff = sample['HDistance'] / dist
+
+    prev_dt, sample = samples[0]
+    dist = sample['HDistance']
+    sample['SmoothDistance'] = dist
+    for dt, sample in samples[1:]:
+        dist += (dt - prev_dt).seconds * sample['Speed'] / 3.6 * coeff
+        sample['SmoothDistance'] = dist
+        print(f"{sample['SmoothDistance'] - sample['HDistance']:.1f}")
+        prev_dt = dt
 
     points = []
     for dt, values in samples:
@@ -62,7 +71,7 @@ def mywellness2tcx(in_file, out_file, start_dt):
         points.append(
             tcd.Trackpoint(
                 tcd.Time(iso(dt)),
-                tcd.DistanceMeters(str(values['NormDistance'])),
+                tcd.DistanceMeters(str(values['SmoothDistance'])),
                 tcd.Cadence(str(values['Rpm'])),
                 tcd.Extensions(
                     ax.TPX(
