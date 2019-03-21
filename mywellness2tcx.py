@@ -56,19 +56,19 @@ def mywellness2tcx(in_file, out_file, start_dt):
     tcd = et.Element('TrainingCenterDatabase', xmlns=TCD_NS)
     activities = et.SubElement(tcd, 'Activities')
     activity = et.SubElement(activities, 'Activity', Sport='Biking')
-    et.SubElement(activity, 'Id').text = iso(start_dt) # TODO Use GUID
+    et.SubElement(activity, 'Id').text = data['data']['physicalActivityId']
     lap = et.SubElement(activity, 'Lap', StartTime=iso(start_dt))
     track = et.SubElement(lap, 'Track')
 
-    for dt, values in samples:
+    for dt, sample in samples:
         point = et.SubElement(track, 'Trackpoint')
         et.SubElement(point, 'Time').text = iso(dt)
-        et.SubElement(point, 'DistanceMeters').text = str(values['SmoothDistance'])
-        et.SubElement(point, 'Cadence').text = str(values['Rpm'])
+        et.SubElement(point, 'DistanceMeters').text = str(sample['SmoothDistance'])
+        et.SubElement(point, 'Cadence').text = str(sample['Rpm'])
         extensions = et.SubElement(point, 'Extensions')
         tpx = et.SubElement(extensions, 'TPX', xmlns=AX_NS)
-        et.SubElement(tpx, 'Speed').text = str(values['Speed'])
-        et.SubElement(tpx, 'Watts').text = str(values['Power'])
+        et.SubElement(tpx, 'Speed').text = str(sample['Speed'] / 3.6)
+        et.SubElement(tpx, 'Watts').text = str(sample['Power'])
 
     doc = et.ElementTree(tcd)
 
@@ -85,6 +85,7 @@ if __name__ == '__main__':
     )
     out_file = base_name + '.tcx'
 
+    # There is no time in JSON and date is in localized format only
     start_dt = datetime.strptime(sys.argv[2], '%Y-%m-%dT%H:%M')
 
     mywellness2tcx(in_file, out_file, start_dt)
